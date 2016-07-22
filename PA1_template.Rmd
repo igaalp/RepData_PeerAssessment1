@@ -1,25 +1,184 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Activity - human steps"
+author: "Igaal Perez"
+date: "22 juillet 2016"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+Reproducible Research: Peer Assessment 1
+================================================================================
+
+For this project, we will process human activity data recorded on a cellular phone. 
+
+##1. Loading and preprocessing the data
+First we will load all the required libraries. We will read the file activity.csv
+Ensure you modify your working directory.
+```{r reading the file , warning=FALSE, messages=FALSE}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(lattice)
+
+setwd("C:/Users/IP/Documents")
+activity<-read.table("activity.csv", sep=",",header=TRUE,  na.strings = "NA", 
+quote="'", stringsAsFactors = FALSE)
+
+```
+Let us have a look at the dataset "activity". Column names and values are displayed
+with extra double quotes.
+
+```{r having a look at the dataset}
+head(activity)
+```
+
+Let us rename the column names and arrange the values by removing double quotes
+and setting the right formats.
+
+```{r Process data}
+names(activity)<-c("steps", "date", "interval")
+
+#removing quotes from values
+activity$steps<-gsub('"', "",activity$steps)
+activity$date<-gsub('"',"", activity$date)
+activity$interval<-gsub('"', "",activity$interval)
+
+#converting the dates to Date class
+activity$date<-as.Date(activity$date, "%Y-%m-%d")
+
+#converting the steps and  intyerval into numeric
+activity$steps<-as.numeric(activity$steps)
+activity$interval<-as.numeric(activity$interval)
+
+```
+Now the dataset look tidy.
+```{r dataset is tidy}
+head(activity)
+```
+  
+  
+
+##2. What is mean total number of steps taken per day?
+Let us have a look on the histogram of total daily steps. 
+```{r histogram of total daimy steps}
+# Plotting histogram of total daily steps
+byday<-group_by(activity, date)
+activitybyday<-summarise(byday, dailysteps=sum(steps))
+hist(activitybyday$dailysteps, breaks=40, main="Daily steps histogram",
+     xlab="number of daily steps", col="dark green")
+
+```
+  
+  
 
 
+##3. What is the average daily activity pattern?
+```{r mean and median activity}
+activitymeanmedian<-summarise(byday,meansteps=mean(steps, na.rm=TRUE), 
+                              mediansteps=median(steps, na.rm=TRUE))
+print(activitymeanmedian)
+```
 
-## What is mean total number of steps taken per day?
+Let us now plot the average number of steps by interval:
+```{r plotting the average number of steps by interval}
+byinterval<-group_by(activity, interval)
+activitybyinterval<-summarise(byinterval, averagesteps=mean(steps, na.rm=TRUE))
+plot(activitybyinterval$interval, activitybyinterval$averagesteps, type="h", main="Average number of steps by interval"
+     , xlab="Interval", ylab="Average number of steps", col="dark blue")
+```
+
+We will also find the interval on which the maximum number of steps in average occurs.
+```{r interval on which maximum number of steps occurs}
+print(paste("The maximum number of steps occurs at interval", 
+      activitybyinterval$interval[which.max(activitybyinterval$averagesteps)], 
+      "on average across all days."))
+```
+
+  
+  
+##4. Imputing missing values
+First let us check how many values are missing:
+```{r missing values}
+missing<-is.na(activity$steps)
+table(missing)
+print("There are 2304 missing values in the activity dataset.")
+```
+
+Then, let us create a new dataset whith imputed missing values: NAs are replaced
+by the mean valuee for the same interval. We will create and use the dataset "activityfilled".
+```{r imputing missing values}
+activityfilled<-activity 
+fillingbyinterval<-function(x, intervalofx){
+    if (is.na(x) | is.nan(x))   {
+     x<-activitybyinterval$averagesteps[activitybyinterval$interval==intervalofx]   
+    } else {
+        x=x
+    }
+}
+
+for(i in 1:17568) {activityfilled$steps[i]<-fillingbyinterval(activityfilled$steps[i], activityfilled$interval[i])}
+
+head(activityfilled)
+```
+We can compare the "activityfilled" dataset to the "activity"" dataset and check there are no more missing values:
+```{r missing values in activityfilled}
+missingfilled<-is.na(activityfilled$steps)
+table(missingfilled)
+```
+
+Now we can plot the histogram of daily total steps when all missing values are replaced.
+```{r plotting histogram of total daily steps, no missing values}
+bydayfilled<-group_by(activityfilled, date)
+activityfilledbyday<-summarise(bydayfilled, dailysteps=sum(steps))
+hist(activityfilledbyday$dailysteps, breaks=40, main="Daily steps histogram, no missing values",
+     xlab="number of daily steps", col="dark blue")
+```
+
+We can notice that the maximum frequency that occurs at the range 11000-12000 is now higher than in the original dataset (12 vs. 7).
+Let us check the mean and median values once the NAs are replaced:
+```{r mean and median values once NAs are removed}
+activityfilledmeanmedian<-summarise(bydayfilled,meansteps=mean(steps, na.rm=TRUE), 
+                              mediansteps=median(steps, na.rm=TRUE))
+print(activityfilledmeanmedian)
+```
+  
+  
+
+##5. Are there differences in activity patterns between weekdays and weekends?
+To answer this question, we will create a factor variable to check which day is 
+a weekday or a weekend.
+```{r wekday function}
+typeofday<-function(jour){
+    if(tolower(weekdays(jour)) %in% c("samedi", "dimanche")) {
+        "weekend"
+    } else {
+        "weekday"
+    }
+}
+```
+We will add a new column "type" in which will be stored the type of weekday according to its date:
+```{r type of weekday}
+activityfilled<-mutate(activityfilled, type=NULL)
+for (j in 1:17568){
+    activityfilled$type[j]<-typeofday(activityfilled$date[j])
+}
+head(activityfilled)
+``` 
+Let us group by interval and type. Then we plot using lattice system.
+```{r weekday vs. weekend number of steps}
+filledbyinterval<-group_by(activityfilled, interval, type)
+activityfilledbyinterval<-summarise(filledbyinterval, averagesteps=mean(steps, na.rm=TRUE))
+
+xyplot(averagesteps ~ interval | type, data= activityfilledbyinterval, layout=c(1, 2), type="l")
+
+#releasing the graphical device
+dev.off()
+dev.set(which = 2)
+
+```
+**As a conclusion, we can see that on the weekends, the number of steps is greater during the interval 800-950 by around 70 steps  compared to the weekend.**
 
 
-
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
